@@ -44,12 +44,9 @@ func main() {
 		}
 	}()
 
-	done := make(chan struct{})
-	go func() {
-		<-ctx.Done()
-		close(done)
-	}()
-	var e = Engine {ob: newOrderBook(done)}
+	
+	var e = Engine{reqChan: make(chan *Request, 10000)}
+	go e.processRequest(ctx)
 
 	for {
 		conn, err := l.Accept()

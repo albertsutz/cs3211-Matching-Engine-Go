@@ -16,6 +16,7 @@ type Request struct {
 }
 
 type Engine struct{
+	reqChan chan *Request
 }
 
 func (e *Engine) processRequest(ctx context.Context) {
@@ -25,13 +26,16 @@ func (e *Engine) processRequest(ctx context.Context) {
 		close(done)
 	}()
 	ob := newOrderBook(done) 
-	reqChan := make(chan *Request, 10000)
 
 	for {
-		req := <-reqChan
-		switch req.in.
-
-		
+		req := <-e.reqChan
+		in := req.in 
+		switch in.orderType {
+		case inputCancel:
+			ob.process_cancel(in.orderId, req.clientChan)
+		default:
+			ob.process_order(in.orderType, in.orderId, in.instrument, in.price, in.count, req.clientChan)
+		}
 	}
 }
 
@@ -43,7 +47,7 @@ func (e *Engine) accept(ctx context.Context, conn net.Conn) {
 	go e.handleConn(conn)
 }
 
-func (e *Engine) handleConn(conn net.Conn, reqChan chan *Request) {
+func (e *Engine) handleConn(conn net.Conn) {
 	defer conn.Close()
 	clientChan := make(chan struct{})
 	for {
@@ -54,8 +58,8 @@ func (e *Engine) handleConn(conn net.Conn, reqChan chan *Request) {
 			}
 			return
 		}
-		request := &Request{in: input, clientChan: clientChan}
-		reqChan <- request
+		request := &Request{in: in, clientChan: clientChan}
+		e.reqChan <- request
 		<- clientChan 
 	}
 }
