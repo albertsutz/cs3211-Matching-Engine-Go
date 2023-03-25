@@ -2,6 +2,9 @@ package main
 
 import (
 	"time"
+	"fmt"
+	"os"
+// )
 )
 
 type Order struct {
@@ -12,6 +15,31 @@ type Order struct {
 	size uint32
 }
 
+type Instrument struct {
+	name string
+	em *Mutex 
+	buyBook  *LinkedList
+	sellBook *LinkedList
+
+	counter int
+	currentType inputType
+	turnMut *Mutex
+	turnChan chan struct{}
+}
+
+func newInstrument(name string) *Instrument {
+	var i = Instrument{
+		name: name, 
+		em: initMutex(),
+		buyBook:  newLinkedList(),
+		sellBook: newLinkedList(),
+		counter: 0,
+		currentType: 'X',
+		turnMut: initMutex(),
+		turnChan: make(chan struct{}, 1)}
+	i.turnChan <- struct{}{}
+	return &i
+}
 
 func instrumentFunc(done <-chan struct{}, name string) chan Order {
 	orderChan := make(chan Order)
@@ -20,12 +48,23 @@ func instrumentFunc(done <-chan struct{}, name string) chan Order {
 		for {
 			select {
 			case order:= <- orderChan:
+				fmt.Fprintf(os.Stderr, "GOT ORDER\n")
+				if order.orderType != instrument.currentType {
+					<-instrument.turnChan
+				}
+				fmt.Fprintf(os.Stderr, "DOING ORDER\n")
+
+				instrument.turnMut.lock()
+				instrument.counter++
+				instrument.currentType = order.orderType
+				instrument.turnMut.unlock()
+
 				if order.orderType == inputBuy {
-					instrument.processBuy(order.id, order.price, order.size, order.clientChan)
+					go instrument.processBuy(order.id, order.price, order.size, order.clientChan)
 				} else if order.orderType == inputSell {
-					instrument.processSell(order.id, order.price, order.size, order.clientChan)
+					go instrument.processSell(order.id, order.price, order.size, order.clientChan)
 				} else {
-					instrument.processCancel(order.id, order.clientChan)
+					go instrument.processCancel(order.id, order.clientChan)
 				}
 			case <- done:
 				return
@@ -46,30 +85,42 @@ func min(a, b uint32) uint32 {
 	return b
 }
 
-type Instrument struct {
-	name string
-	buyBook  *LinkedList
-	sellBook *LinkedList
-}
-
-func newInstrument(name string) *Instrument {
-	return &Instrument{
-		name: name, 
-		buyBook:  newLinkedList(),
-		sellBook: newLinkedList()}
-}
-
 // process buy
 func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan chan struct {}) {
 	var bestSell *Node
+	bestSell = i.getBestSell()
+
+	if bestSell == nil || price < bestSell.price {
+		i.addBuy(id, price, size)
+	} else {
+		i.executeBuy(id, price, size, clientChan)
+	}
+
+	i.turnMut.lock()
+	defer i.turnMut.unlock()
+	i.counter--
+	if(i.counter == 0) {
+		i.currentType = 'X'
+		i.turnChan <- struct{}{}
+	}	
+
+	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+	clientChan <- struct{}{}
+}
+
+func (i *Instrument) executeBuy(id uint32, price uint32, size uint32, clientChan chan struct {}) {
+	// acquire execute lock
+	i.em.lock()
+	defer i.em.unlock() 
+
+	var bestSell *Node
 	for true {
 		bestSell = i.getBestSell()
-		if bestSell == nil {
+
+		if bestSell == nil || price < bestSell.price {
 			break
-		}
-		if price < bestSell.price {
-			break
-		}
+		} 
+
 		//quantity traded
 		var quantity = min(size, bestSell.size)
 		size -= quantity
@@ -80,7 +131,9 @@ func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan
 
 		//if bestSell.size == 0 -> remove from instrument
 		if bestSell.size == 0 {
+			i.sellBook.lock()
 			i.sellBook.deleteNode(bestSell)
+			i.sellBook.unlock()
 		}
 		if size == 0 {
 			break
@@ -89,18 +142,37 @@ func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan
 	if size > 0 {
 		i.addBuy(id, price, size)
 	}
-
-	clientChan <- struct{}{}
 }
 
 func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientChan chan struct{}) {
+	bestBuy := i.getBestBuy()
+	if bestBuy == nil || price > bestBuy.price {
+		i.addSell(id, price, size)
+	} else {
+		i.executeSell(id, price, size, clientChan)
+	}
+
+	i.turnMut.lock()
+	defer i.turnMut.unlock()
+	i.counter--
+	if(i.counter == 0) {
+		i.currentType = 'X'
+		i.turnChan <- struct{}{}
+	}
+
+	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+	clientChan <- struct{}{}
+}
+
+func (i *Instrument) executeSell(id uint32, price uint32, size uint32, clientChan chan struct{}) {
+	// acquire mutex here 
+	i.em.lock()
+	defer i.em.unlock()
+
 	var bestBuy *Node
 	for true {
 		bestBuy = i.getBestBuy()
-		if bestBuy == nil {
-			break
-		}
-		if price > bestBuy.price {
+		if bestBuy == nil || price > bestBuy.price {
 			break
 		}
 		//quantity traded
@@ -113,6 +185,8 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 
 		//if bestBuy.size == 0 -> remove from instrument
 		if bestBuy.size == 0 {
+			i.buyBook.lock()
+			defer i.buyBook.unlock()
 			i.buyBook.deleteNode(bestBuy)
 		}
 		if size == 0 {
@@ -122,11 +196,12 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 	if size > 0 {
 		i.addSell(id, price, size)
 	}
-
-	clientChan <- struct{}{}
 }
 
 func (i *Instrument) getBestBuy() *Node {
+	i.buyBook.lock()
+	defer i.buyBook.unlock()
+
 	if i.buyBook.getLength() == 0 {
 		return nil
 	}
@@ -144,6 +219,9 @@ func (i *Instrument) getBestBuy() *Node {
 }
 
 func (i *Instrument) getBestSell() *Node {
+	i.sellBook.lock()
+	defer i.sellBook.unlock()
+
 	if i.sellBook.getLength() == 0 {
 		return nil
 	}
@@ -161,6 +239,9 @@ func (i *Instrument) getBestSell() *Node {
 }
 
 func (i *Instrument) addBuy(id uint32, price uint32, size uint32) {
+	i.buyBook.lock()
+	defer i.buyBook.unlock()
+
 	currentTime := GetCurrentTimestamp()
 	// fmt.Fprintf(os.Stderr, "Buy %v added with %v@%v : %v\n", id, size, price, currentTime)
 	var in = input {
@@ -174,6 +255,10 @@ func (i *Instrument) addBuy(id uint32, price uint32, size uint32) {
 }
 
 func (i *Instrument) addSell(id uint32, price uint32, size uint32) {
+	i.sellBook.lock()
+	defer i.sellBook.unlock()
+	
+
 	currentTime := GetCurrentTimestamp()
 	// fmt.Fprintf(os.Stderr, "Sell %v added with %v@%v : %v\n", id, size, price, currentTime)
 	var in = input {
@@ -188,12 +273,25 @@ func (i *Instrument) addSell(id uint32, price uint32, size uint32) {
 
 
 func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
+	i.sellBook.lock()
+	i.buyBook.lock()
+	defer i.sellBook.unlock()
+	defer i.buyBook.unlock()
+
 	in := input {orderId: id} 
 	node := i.buyBook.getNodeById(id)
 	if node != nil {
 		i.buyBook.deleteNode(node)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
 		// fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
+		i.turnMut.lock()
+		defer i.turnMut.unlock()
+		i.counter--
+		if(i.counter == 0) {
+			i.currentType = 'X'
+			i.turnChan <- struct{}{}
+		}
+		fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
 	}
@@ -202,9 +300,26 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 		i.sellBook.deleteNode(node2)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
 		// fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
+		i.turnMut.lock()
+		defer i.turnMut.unlock()
+		i.counter--
+		if(i.counter == 0) {
+			i.currentType = 'X'
+			i.turnChan <- struct{}{}
+		}
+		fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
 	}
 	outputOrderDeleted(in, false, GetCurrentTimestamp())
+
+	i.turnMut.lock()
+	defer i.turnMut.unlock()
+	i.counter--
+	if(i.counter == 0) {
+		i.currentType = 'X'
+		i.turnChan <- struct{}{}
+	}
+	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }
