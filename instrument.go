@@ -2,10 +2,11 @@ package main
 
 import (
 	"time"
-	// "fmt"
-	// "os"
+	"fmt"
+	"os"
 // )
 )
+
 
 type Order struct {
 	orderType inputType
@@ -31,8 +32,6 @@ func newInstrument(name string) *Instrument {
 	var i = Instrument{
 		name: name, 
 		em: initMutex(),
-		// buyBook:  newLinkedList(),
-		// sellBook: newLinkedList(),
 		counter: 0,
 		currentType: 'X',
 		turnMut: initMutex(),
@@ -122,6 +121,7 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 			if (request.requestType == "getBestSell") {
 				bestSell := getBestSell(sellBook)
 				if bestSell != nil {
+					fmt.Fprintf(os.Stderr, "best sell %v@%v\n", bestSell.size, bestSell.price)
 					output := InstrumentOutput {
 						requestType: request.requestType,
 						status: true,
@@ -131,6 +131,7 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 						counter: bestSell.counter}
 				request.outputChan <- output
 				} else {
+					fmt.Fprintf(os.Stderr, "best sell empty\n")
 					request.outputChan <- InstrumentOutput {requestType: request.requestType, status: false}
 				}
 			} else if (request.requestType == "insert") {
@@ -251,6 +252,7 @@ func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan 
 	// ask for bestSell
 	inputSBH <- InstrumentRequest {requestType: "getBestSell", outputChan: outputChan}
 	output = <- outputChan
+	fmt.Fprintf(os.Stderr, "status %v %v@%v\n", output.status, output.size, output.price)
 
 	// var bestSell *Node
 	// bestSell = i.getBestSell()
