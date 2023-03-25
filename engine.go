@@ -42,7 +42,3 @@ func handleConn(conn net.Conn) {
 		outputOrderExecuted(123, 124, 1, 2000, 10, GetCurrentTimestamp())
 	}
 }
-
-func GetCurrentTimestamp() int64 {
-	return time.Now().UnixNano()
-}
