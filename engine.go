@@ -20,11 +20,6 @@ type Engine struct{
 }
 
 func (e *Engine) processRequest(done chan struct{}) {
-	// done := make(chan struct{})
-	// go func() {
-	// 	<-ctx.Done()
-	// 	close(done)
-	// }()
 	ob := newOrderBook(done) 
 
 	for {
@@ -44,10 +39,10 @@ func (e *Engine) accept(ctx context.Context, conn net.Conn) {
 		<-ctx.Done()
 		conn.Close()
 	}()
-	go e.handleConn(conn)
+	go handleConn(conn, e.reqChan)
 }
 
-func (e *Engine) handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, reqChan chan Request) {
 	defer conn.Close()
 	clientChan := make(chan struct{})
 	for {
@@ -59,7 +54,7 @@ func (e *Engine) handleConn(conn net.Conn) {
 			return
 		}
 		request := Request{in: in, clientChan: clientChan}
-		e.reqChan <- request
+		reqChan <- request
 		<- clientChan 
 	}
 }
