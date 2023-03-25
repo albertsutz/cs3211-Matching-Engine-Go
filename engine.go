@@ -16,15 +16,15 @@ type Request struct {
 }
 
 type Engine struct{
-	reqChan chan *Request
+	reqChan chan Request
 }
 
-func (e *Engine) processRequest(ctx context.Context) {
-	done := make(chan struct{})
-	go func() {
-		<-ctx.Done()
-		close(done)
-	}()
+func (e *Engine) processRequest(done chan struct{}) {
+	// done := make(chan struct{})
+	// go func() {
+	// 	<-ctx.Done()
+	// 	close(done)
+	// }()
 	ob := newOrderBook(done) 
 
 	for {
@@ -58,7 +58,7 @@ func (e *Engine) handleConn(conn net.Conn) {
 			}
 			return
 		}
-		request := &Request{in: in, clientChan: clientChan}
+		request := Request{in: in, clientChan: clientChan}
 		e.reqChan <- request
 		<- clientChan 
 	}

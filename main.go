@@ -45,8 +45,15 @@ func main() {
 	}()
 
 	
-	var e = Engine{reqChan: make(chan *Request, 10000)}
-	go e.processRequest(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(done)
+	}()
+
+	var e = Engine{reqChan: make(chan Request)}
+	go e.processRequest(done)
 
 	for {
 		conn, err := l.Accept()
