@@ -7,21 +7,24 @@ import (
 	"io"
 	"net"
 	"os"
-	"time"
+	// "time"
 )
 
-type Engine struct{}
+type Engine struct{
+	ob *OrderBook 
+}
 
 func (e *Engine) accept(ctx context.Context, conn net.Conn) {
 	go func() {
 		<-ctx.Done()
 		conn.Close()
 	}()
-	go handleConn(conn)
+	go e.handleConn(conn)
 }
 
-func handleConn(conn net.Conn) {
+func (e *Engine) handleConn(conn net.Conn) {
 	defer conn.Close()
+	clientChan := make(chan struct{})
 	for {
 		in, err := readInput(conn)
 		if err != nil {
@@ -32,13 +35,11 @@ func handleConn(conn net.Conn) {
 		}
 		switch in.orderType {
 		case inputCancel:
-			fmt.Fprintf(os.Stderr, "Got cancel ID: %v\n", in.orderId)
-			outputOrderDeleted(in, true, GetCurrentTimestamp())
+			e.ob.process_cancel(in.orderId, clientChan)
+			<- clientChan 
 		default:
-			fmt.Fprintf(os.Stderr, "Got order: %c %v x %v @ %v ID: %v\n",
-				in.orderType, in.instrument, in.count, in.price, in.orderId)
-			outputOrderAdded(in, GetCurrentTimestamp())
+			e.ob.process_order(in.orderType, in.orderId, in.instrument, in.price, in.count, clientChan)
+			<- clientChan 
 		}
-		outputOrderExecuted(123, 124, 1, 2000, 10, GetCurrentTimestamp())
 	}
 }

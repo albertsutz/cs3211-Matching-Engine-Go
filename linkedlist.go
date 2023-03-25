@@ -1,28 +1,30 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"strconv"
+	// "fmt"
+	// "os"
+	// "strconv"
 )
 
 type Node struct {
 	prev  *Node
 	next  *Node
-	id int
-	price int
-	size int
+	id uint32
+	price uint32
+	size uint32
 	time int64
+	counter uint32
 }
 
-func newNode(id int, price int, size int, time int64) *Node {
+func newNode(id uint32, price uint32, size uint32, time int64) *Node {
 	return &Node{
 		prev: nil,
 		next: nil,
 		id: id,
 		price: price,
 		size: size,
-		time: time}
+		time: time,
+		counter: 1}
 }
 
 type LinkedList struct {
@@ -44,7 +46,7 @@ func (ll *LinkedList) getLength() int {
 	return ll.length
 }
 
-func (ll *LinkedList) insert(id int, price int, size int, time int64) {
+func (ll *LinkedList) insert(id uint32, price uint32, size uint32, time int64) {
 	var node *Node = newNode(id, price, size, time)
 	if ll.length == 0 {
 		node.next = nil
@@ -59,7 +61,7 @@ func (ll *LinkedList) insert(id int, price int, size int, time int64) {
 	ll.head = node
 }
 
-func (ll *LinkedList) getNodeById(id int) *Node {
+func (ll *LinkedList) getNodeById(id uint32) *Node {
 	var dummyNode *Node = ll.getHead()
 	for i := 0; i < ll.getLength(); i++ {
 		if dummyNode.id == id {
@@ -98,18 +100,18 @@ func (ll *LinkedList) deleteNode(toBeDeleted *Node) bool {
 	return answer
 }
 
-func (ll *LinkedList) printValues() {
-	if ll.getLength() == 0 {
-		fmt.Fprintf(os.Stderr, "empty\n");
-		return
-	}
-	var answer string = ""
-	var dummy *Node = ll.head
-	for i := 0; i < ll.getLength(); i++ {
-		answer += "(" + strconv.Itoa(dummy.id) + " with " + strconv.Itoa(dummy.price) + "@" + strconv.Itoa(dummy.size) + ") "
-		dummy = dummy.next
-	}
-	fmt.Fprintf(os.Stderr, answer + "\n")
-}
+// func (ll *LinkedList) printValues() {
+// 	if ll.getLength() == 0 {
+// 		fmt.Fprintf(os.Stderr, "empty\n");
+// 		return
+// 	}
+// 	var answer string = ""
+// 	var dummy *Node = ll.head
+// 	for i := 0; i < ll.getLength(); i++ {
+// 		answer += "(" + strconv.Itoa(dummy.id) + " with " + strconv.Itoa(dummy.price) + "@" + strconv.Itoa(dummy.size) + ") "
+// 		dummy = dummy.next
+// 	}
+// 	fmt.Fprintf(os.Stderr, answer + "\n")
+// }
 
 

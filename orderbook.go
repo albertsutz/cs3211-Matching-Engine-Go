@@ -1,41 +1,51 @@
 package main
 
 import (
-
 )
 
 type PairInsOrd struct {
-	id string
-	orderType string
+	instrument string 
+	orderType inputType
 }
 
 type OrderBook struct{
-	m_instrument_map map[string]*Instrument
-	m_id_map map[int]PairInsOrd
+	mut *Mutex
+	m_instrument_map map[string](chan Order)
+	m_id_map map[uint32]PairInsOrd
+	done <-chan struct{}
 }
 
-func (o *OrderBook) process_order(orderType string, id int, instr string, price int, size int) {
-	// if !is_exist_instr {
-
-	// }
-	// var instrument_object
-
-
-    // if (!is_exist_instr(order.instrument)) {
-    //     m_instrument_map.emplace(std::piecewise_construct, std::forward_as_tuple(order.instrument), std::forward_as_tuple());
-    // }
-    // auto& instruction_object = m_instrument_map.at(order.instrument);
-    // m_id_map[order.order_id] = std::make_pair(order.instrument, order.order_type);
-
-    // auto result = instruction_object.process_order(order); 
+func newOrderBook(done <-chan struct{}) *OrderBook{
+	return &OrderBook {
+		mut: initMutex(),
+		m_instrument_map: make(map[string](chan Order)),
+		m_id_map: make(map[uint32]PairInsOrd),
+		done: done}
 }
 
-func (o *OrderBook) process_cancel(id int) {
-    // pair_name_type, ok = o.m_id_map[id] 
+func (o *OrderBook) process_order(orderType inputType, id uint32, instr string, price uint32, size uint32, clientChan chan struct{}) {
+	o.mut.lock()
+	if !o.is_exist_instr(instr) {
+		o.m_instrument_map[instr] = instrumentFunc(o.done, instr)
+	}
+	o.m_id_map[id] = PairInsOrd{instrument: instr, orderType: orderType}
+	o.mut.unlock()
 
-    // auto& instruction_object = m_instrument_map.at(pair_name_type.first);
+	o.m_instrument_map[instr] <- Order{orderType: orderType, id: id, price: price, size: size, clientChan: clientChan}
+}
 
-    // auto res = instruction_object.process_cancel(order, pair_name_type.second); 
+func (o *OrderBook) process_cancel(id uint32, clientChan chan struct{}) {
+	o.mut.lock()
+    pair, ok := o.m_id_map[id] 
+	o.mut.unlock()
+	if !ok {
+		// fmt.Fprintf(os.Stderr, "Declined Cancel with ID %v at %v", id, GetCurrentTimestamp())
+		outputOrderDeleted(input{orderId: id}, false, GetCurrentTimestamp())
+		clientChan <- struct{}{}
+		return  
+	}
+
+	o.m_instrument_map[pair.instrument] <- Order{orderType: inputCancel, id: id, clientChan: clientChan}
 }
 
 func (o *OrderBook) is_exist_instr(instr string) bool {
@@ -43,7 +53,7 @@ func (o *OrderBook) is_exist_instr(instr string) bool {
 	return ok
 }
 
-func (o *OrderBook) is_exist_id(id int) bool {
+func (o *OrderBook) is_exist_id(id uint32) bool {
 	_, ok := o.m_id_map[id]
 	return ok
 }
