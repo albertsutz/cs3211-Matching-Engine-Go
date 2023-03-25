@@ -10,8 +10,29 @@ import (
 	// "time"
 )
 
+type Request struct {
+	in input
+	clientChan chan struct{}
+}
+
 type Engine struct{
-	ob *OrderBook 
+}
+
+func (e *Engine) processRequest(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		close(done)
+	}()
+	ob := newOrderBook(done) 
+	reqChan := make(chan *Request, 10000)
+
+	for {
+		req := <-reqChan
+		switch req.in.
+
+		
+	}
 }
 
 func (e *Engine) accept(ctx context.Context, conn net.Conn) {
@@ -22,7 +43,7 @@ func (e *Engine) accept(ctx context.Context, conn net.Conn) {
 	go e.handleConn(conn)
 }
 
-func (e *Engine) handleConn(conn net.Conn) {
+func (e *Engine) handleConn(conn net.Conn, reqChan chan *Request) {
 	defer conn.Close()
 	clientChan := make(chan struct{})
 	for {
@@ -33,13 +54,8 @@ func (e *Engine) handleConn(conn net.Conn) {
 			}
 			return
 		}
-		switch in.orderType {
-		case inputCancel:
-			e.ob.process_cancel(in.orderId, clientChan)
-			<- clientChan 
-		default:
-			e.ob.process_order(in.orderType, in.orderId, in.instrument, in.price, in.count, clientChan)
-			<- clientChan 
-		}
+		request := &Request{in: input, clientChan: clientChan}
+		reqChan <- request
+		<- clientChan 
 	}
 }
