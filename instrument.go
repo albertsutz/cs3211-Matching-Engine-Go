@@ -17,13 +17,13 @@ type Order struct {
 
 type Instrument struct {
 	name string
-	em *Mutex 
+	em chan struct{}
 	buyBook  *LinkedList
 	sellBook *LinkedList
 
 	counter int
 	currentType inputType
-	turnMut *Mutex
+	turnMut chan struct{}
 	turnChan chan struct{}
 }
 
@@ -54,10 +54,10 @@ func instrumentFunc(done <-chan struct{}, name string) chan Order {
 				}
 				//fmt.Fprintf(os.Stderr, "DOING ORDER\n")
 
-				instrument.turnMut.lock()
+				lockMutex(instrument.turnMut)
 				instrument.counter++
 				instrument.currentType = order.orderType
-				instrument.turnMut.unlock()
+				unlockMutex(instrument.turnMut)
 
 				if order.orderType == inputBuy {
 					go instrument.processBuy(order.id, order.price, order.size, order.clientChan)
@@ -96,13 +96,13 @@ func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan
 		i.executeBuy(id, price, size, clientChan)
 	}
 
-	i.turnMut.lock()
+	lockMutex(i.turnMut)
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
 	}	
-	i.turnMut.unlock()
+	unlockMutex(i.turnMut)
 
 	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
@@ -110,8 +110,8 @@ func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan
 
 func (i *Instrument) executeBuy(id uint32, price uint32, size uint32, clientChan chan struct {}) {
 	// acquire execute lock
-	i.em.lock()
-	defer i.em.unlock() 
+	lockMutex(i.em)
+	defer unlockMutex(i.em)
 
 	var bestSell *Node
 	for true {
@@ -152,13 +152,13 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 		i.executeSell(id, price, size, clientChan)
 	}
 
-	i.turnMut.lock()
+	lockMutex(i.turnMut)
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
-	}
-	i.turnMut.unlock()
+	}	
+	unlockMutex(i.turnMut)
 
 	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
@@ -166,8 +166,8 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 
 func (i *Instrument) executeSell(id uint32, price uint32, size uint32, clientChan chan struct{}) {
 	// acquire mutex here 
-	i.em.lock()
-	defer i.em.unlock()
+	lockMutex(i.em)
+	defer unlockMutex(i.em)
 
 	var bestBuy *Node
 	for true {
@@ -277,7 +277,6 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 	defer i.sellBook.unlock()
 	i.buyBook.lock()
 	defer i.buyBook.unlock()
-	
 
 	in := input {orderId: id} 
 	node := i.buyBook.getNodeById(id)
@@ -285,13 +284,13 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 		i.buyBook.deleteNode(node)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
 		// //fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
-		i.turnMut.lock()
+		lockMutex(i.turnMut)
 		i.counter--
 		if(i.counter == 0) {
 			i.currentType = 'X'
 			i.turnChan <- struct{}{}
-		}
-		i.turnMut.unlock()
+		}	
+		unlockMutex(i.turnMut)
 		//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
@@ -301,26 +300,26 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 		i.sellBook.deleteNode(node2)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
 		// //fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
-		i.turnMut.lock()
+		lockMutex(i.turnMut)
 		i.counter--
 		if(i.counter == 0) {
 			i.currentType = 'X'
 			i.turnChan <- struct{}{}
-		}
-		i.turnMut.unlock()
+		}	
+		unlockMutex(i.turnMut)
 		//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
 	}
 	outputOrderDeleted(in, false, GetCurrentTimestamp())
 
-	i.turnMut.lock()
+	lockMutex(i.turnMut)
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
-	}
-	i.turnMut.unlock()
+	}	
+	unlockMutex(i.turnMut)
 	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }

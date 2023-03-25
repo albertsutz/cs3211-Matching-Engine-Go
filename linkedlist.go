@@ -28,7 +28,7 @@ func newNode(id uint32, price uint32, size uint32, time int64) *Node {
 }
 
 type LinkedList struct {
-	mut *Mutex
+	mut chan struct{}
 	head   *Node
 	length int
 }
@@ -41,11 +41,11 @@ func newLinkedList() *LinkedList {
 }
 
 func (ll *LinkedList) lock() {
-	ll.mut.lock()
+	lockMutex(ll.mut)
 }
 
 func (ll *LinkedList) unlock() {
-	ll.mut.unlock()
+	unlockMutex(ll.mut)
 }
 
 func (ll *LinkedList) getHead() *Node {

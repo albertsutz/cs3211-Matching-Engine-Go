@@ -9,7 +9,7 @@ type PairInsOrd struct {
 }
 
 type OrderBook struct{
-	mut *Mutex
+	mut chan struct{}
 	m_instrument_map map[string](chan Order)
 	m_id_map map[uint32]PairInsOrd
 	done <-chan struct{}
@@ -24,20 +24,20 @@ func newOrderBook(done <-chan struct{}) *OrderBook{
 }
 
 func (o *OrderBook) process_order(orderType inputType, id uint32, instr string, price uint32, size uint32, clientChan chan struct{}) {
-	o.mut.lock()
+	lockMutex(o.mut)
 	if !o.is_exist_instr(instr) {
 		o.m_instrument_map[instr] = instrumentFunc(o.done, instr)
 	}
 	o.m_id_map[id] = PairInsOrd{instrument: instr, orderType: orderType}
-	o.mut.unlock()
+	unlockMutex(o.mut)
 
 	o.m_instrument_map[instr] <- Order{orderType: orderType, id: id, price: price, size: size, clientChan: clientChan}
 }
 
 func (o *OrderBook) process_cancel(id uint32, clientChan chan struct{}) {
-	o.mut.lock()
+	lockMutex(o.mut)
     pair, ok := o.m_id_map[id] 
-	o.mut.unlock()
+	unlockMutex(o.mut)
 	if !ok {
 		// fmt.Fprintf(os.Stderr, "Declined Cancel with ID %v at %v", id, GetCurrentTimestamp())
 		outputOrderDeleted(input{orderId: id}, false, GetCurrentTimestamp())
