@@ -2,8 +2,8 @@ package main
 
 import (
 	"time"
-	"fmt"
-	"os"
+	// "fmt"
+	// "os"
 // )
 )
 
@@ -48,11 +48,11 @@ func instrumentFunc(done <-chan struct{}, name string) chan Order {
 		for {
 			select {
 			case order:= <- orderChan:
-				fmt.Fprintf(os.Stderr, "GOT ORDER\n")
+				//fmt.Fprintf(os.Stderr, "GOT ORDER\n")
 				if order.orderType != instrument.currentType {
 					<-instrument.turnChan
 				}
-				fmt.Fprintf(os.Stderr, "DOING ORDER\n")
+				//fmt.Fprintf(os.Stderr, "DOING ORDER\n")
 
 				instrument.turnMut.lock()
 				instrument.counter++
@@ -97,14 +97,14 @@ func (i *Instrument) processBuy(id uint32, price uint32, size uint32, clientChan
 	}
 
 	i.turnMut.lock()
-	defer i.turnMut.unlock()
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
 	}	
+	i.turnMut.unlock()
 
-	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }
 
@@ -125,7 +125,7 @@ func (i *Instrument) executeBuy(id uint32, price uint32, size uint32, clientChan
 		var quantity = min(size, bestSell.size)
 		size -= quantity
 		bestSell.size -= quantity
-		// fmt.Fprintf(os.Stderr, "TRADE BUY %v with %v %v@%v : %v counter %v\n", id, bestSell.id, quantity, bestSell.price, GetCurrentTimestamp(), bestSell.counter)
+		// //fmt.Fprintf(os.Stderr, "TRADE BUY %v with %v %v@%v : %v counter %v\n", id, bestSell.id, quantity, bestSell.price, GetCurrentTimestamp(), bestSell.counter)
 		outputOrderExecuted(bestSell.id, id, bestSell.counter, bestSell.price, quantity, GetCurrentTimestamp())
 		bestSell.counter++
 
@@ -153,14 +153,14 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 	}
 
 	i.turnMut.lock()
-	defer i.turnMut.unlock()
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
 	}
+	i.turnMut.unlock()
 
-	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }
 
@@ -179,15 +179,15 @@ func (i *Instrument) executeSell(id uint32, price uint32, size uint32, clientCha
 		var quantity = min(size, bestBuy.size)
 		size -= quantity
 		bestBuy.size -= quantity
-		// fmt.Fprintf(os.Stderr, "TRADE SELL %v with %v %v@%v : %v counter %v\n",id, bestBuy.id, quantity, bestBuy.price, GetCurrentTimestamp(), bestBuy.counter)
+		// //fmt.Fprintf(os.Stderr, "TRADE SELL %v with %v %v@%v : %v counter %v\n",id, bestBuy.id, quantity, bestBuy.price, GetCurrentTimestamp(), bestBuy.counter)
 		outputOrderExecuted(bestBuy.id, id, bestBuy.counter, bestBuy.price, quantity, GetCurrentTimestamp())
 		bestBuy.counter++
 
 		//if bestBuy.size == 0 -> remove from instrument
 		if bestBuy.size == 0 {
 			i.buyBook.lock()
-			defer i.buyBook.unlock()
 			i.buyBook.deleteNode(bestBuy)
+			i.buyBook.unlock()
 		}
 		if size == 0 {
 			break
@@ -243,7 +243,7 @@ func (i *Instrument) addBuy(id uint32, price uint32, size uint32) {
 	defer i.buyBook.unlock()
 
 	currentTime := GetCurrentTimestamp()
-	// fmt.Fprintf(os.Stderr, "Buy %v added with %v@%v : %v\n", id, size, price, currentTime)
+	// //fmt.Fprintf(os.Stderr, "Buy %v added with %v@%v : %v\n", id, size, price, currentTime)
 	var in = input {
 		orderType: inputBuy,
 		orderId: id, 
@@ -260,7 +260,7 @@ func (i *Instrument) addSell(id uint32, price uint32, size uint32) {
 	
 
 	currentTime := GetCurrentTimestamp()
-	// fmt.Fprintf(os.Stderr, "Sell %v added with %v@%v : %v\n", id, size, price, currentTime)
+	// //fmt.Fprintf(os.Stderr, "Sell %v added with %v@%v : %v\n", id, size, price, currentTime)
 	var in = input {
 		orderType: inputSell,
 		orderId: id, 
@@ -274,24 +274,25 @@ func (i *Instrument) addSell(id uint32, price uint32, size uint32) {
 
 func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 	i.sellBook.lock()
-	i.buyBook.lock()
 	defer i.sellBook.unlock()
+	i.buyBook.lock()
 	defer i.buyBook.unlock()
+	
 
 	in := input {orderId: id} 
 	node := i.buyBook.getNodeById(id)
 	if node != nil {
 		i.buyBook.deleteNode(node)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
-		// fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
+		// //fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
 		i.turnMut.lock()
-		defer i.turnMut.unlock()
 		i.counter--
 		if(i.counter == 0) {
 			i.currentType = 'X'
 			i.turnChan <- struct{}{}
 		}
-		fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+		i.turnMut.unlock()
+		//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
 	}
@@ -299,27 +300,27 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}) {
 	if node2 != nil {
 		i.sellBook.deleteNode(node2)
 		outputOrderDeleted(in, true, GetCurrentTimestamp())
-		// fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
+		// //fmt.Fprintf(os.Stderr, "Accepted Cancel with ID %v at %v", id, currentTime)
 		i.turnMut.lock()
-		defer i.turnMut.unlock()
 		i.counter--
 		if(i.counter == 0) {
 			i.currentType = 'X'
 			i.turnChan <- struct{}{}
 		}
-		fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+		i.turnMut.unlock()
+		//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 		clientChan <- struct{}{}
 		return
 	}
 	outputOrderDeleted(in, false, GetCurrentTimestamp())
 
 	i.turnMut.lock()
-	defer i.turnMut.unlock()
 	i.counter--
 	if(i.counter == 0) {
 		i.currentType = 'X'
 		i.turnChan <- struct{}{}
 	}
-	fmt.Fprintf(os.Stderr, "DONE ORDER\n")
+	i.turnMut.unlock()
+	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	// "fmt"
+	// "os"
 )
 
 type Mutex struct {
@@ -10,15 +10,15 @@ type Mutex struct {
 } 
 
 func (m *Mutex) lock() {
-	fmt.Fprintf(os.Stderr, "trying lock\n")
+	// fmt.Fprintf(os.Stderr, "trying lock %v\n", m.name)
 	<- m.mut
-	fmt.Fprintf(os.Stderr, "finished lock\n")
+	// fmt.Fprintf(os.Stderr, "finished lock %v\n",m.name)
 }
 
 func (m *Mutex) unlock() {
-	fmt.Fprintf(os.Stderr, "trying unlock\n")
+	// fmt.Fprintf(os.Stderr, "trying unlock %v\n",m.name)
 	m.mut <- struct{}{}
-	fmt.Fprintf(os.Stderr, "finished unlock\n")
+	// fmt.Fprintf(os.Stderr, "finished unlock %v\n",m.name)
 }
 
 func initMutex() *Mutex {
