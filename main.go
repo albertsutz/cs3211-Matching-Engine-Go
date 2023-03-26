@@ -72,7 +72,7 @@ func main() {
 // 	// "fmt"
 // 	// "os"
 // 	// "strconv"
-// 	"time"
+// 	// "time"
 // )
 
 // func main() {
@@ -80,7 +80,31 @@ func main() {
 // }
 
 // func testInstrument() {
-// 	var ob *OrderBook = newOrderBook()
+// 	done := make(chan struct{})
+// 	dummy := instrumentFunc(done, "testing")
+// 	clientChan := make(chan struct{})
+// 	dummy <- Order{orderType: 'B', id: 1, price: 100, size: 100, clientChan: clientChan}
+// 	<-clientChan
+	// dummy <- Order{orderType: 'S', id: 2, price: 200, size: 100, clientChan: clientChan}
+	// <-clientChan
+
+	// dummy <- Order{orderType: 'B', id: 3, price: 200, size: 50, clientChan: clientChan}
+	// <-clientChan
+
+	// dummy <- Order{orderType: 'B', id: 4, price: 200, size: 25, clientChan: clientChan}
+	// <-clientChan
+
+	// dummy <- Order{orderType: 'B', id: 5, price: 200, size: 25, clientChan: clientChan}
+	// <-clientChan
+
+	// fmt.Fprintf(os.Stderr, "OY1\n")
+	// fmt.Fprintf(os.Stderr, "%v\n", clientChan)
+	// dummy <- Order{orderType: 'C', id: 1, clientChan: clientChan}
+	// <-clientChan
+	// fmt.Fprintf(os.Stderr, "OY2\n")
+
+
+	// 	var ob *OrderBook = newOrderBook()
 // 	// orderType string, id int, instr string, price int, size int
 // 	ob.process_order(inputBuy, 301, "ABC", 3250, 500)
 // 	// ob.process_order("S", 302, "ABC", 3250, 500)

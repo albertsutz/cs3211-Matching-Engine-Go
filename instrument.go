@@ -2,8 +2,8 @@ package main
 
 import (
 	"time"
-	"fmt"
-	"os"
+	// "fmt"
+	// "os"
 // )
 )
 
@@ -65,6 +65,7 @@ func handleBuyBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 		select {
 		case request, _ := <- incomingChan:
 			if (request.requestType == "getBestBuy") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				bestBuy := getBestBuy(buyBook)
 				if bestBuy != nil {
 					output := InstrumentOutput {
@@ -74,20 +75,26 @@ func handleBuyBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 						price: bestBuy.price,
 						size: bestBuy.size,
 						counter: bestBuy.counter}
+					//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 					request.outputChan <- output
 				} else {
-					request.outputChan <- InstrumentOutput {requestType: request.requestType, status: false}
+					output := InstrumentOutput {requestType: request.requestType, status: false}
+					//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
+					request.outputChan <- output
 				}
 			} else if (request.requestType == "insert") {
 				// sus
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				currentTime:= GetCurrentTimestamp()
 				buyBook.insert(request.id, request.price, request.size, currentTime)
 				output := InstrumentOutput {
 					requestType: request.requestType,
 					status: true,
 					time: currentTime}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			} else if (request.requestType == "delete") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				node := buyBook.getNodeById(request.id)
 				if node != nil {
 					buyBook.deleteNode(node)
@@ -96,14 +103,17 @@ func handleBuyBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 					requestType: request.requestType,
 					status: node != nil,
 					time: GetCurrentTimestamp()}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			} else if (request.requestType == "update") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				node := buyBook.getNodeById(request.id)
 				node.size = request.size
 				node.counter++
 				output := InstrumentOutput {
 					requestType: request.requestType,
 					status: true}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			}
 		case <- done:
@@ -119,9 +129,9 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 		select {
 		case request, _ := <- incomingChan:
 			if (request.requestType == "getBestSell") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				bestSell := getBestSell(sellBook)
 				if bestSell != nil {
-					fmt.Fprintf(os.Stderr, "best sell %v@%v\n", bestSell.size, bestSell.price)
 					output := InstrumentOutput {
 						requestType: request.requestType,
 						status: true,
@@ -129,12 +139,15 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 						price: bestSell.price,
 						size: bestSell.size,
 						counter: bestSell.counter}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 				} else {
-					fmt.Fprintf(os.Stderr, "best sell empty\n")
-					request.outputChan <- InstrumentOutput {requestType: request.requestType, status: false}
+					output := InstrumentOutput {requestType: request.requestType, status: false}
+					//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
+					request.outputChan <- output
 				}
 			} else if (request.requestType == "insert") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				// sus
 				currentTime:= GetCurrentTimestamp()
 				sellBook.insert(request.id, request.price, request.size, currentTime)
@@ -142,8 +155,10 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 					requestType: request.requestType,
 					status: true,
 					time: currentTime}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			} else if (request.requestType == "delete") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				node := sellBook.getNodeById(request.id)
 				if node != nil {
 					sellBook.deleteNode(node)
@@ -152,14 +167,17 @@ func handleSellBook(incomingChan chan InstrumentRequest, done <-chan struct{}) {
 					requestType: request.requestType,
 					status: node != nil,
 					time: GetCurrentTimestamp()}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			} else if (request.requestType == "update") {
+				//fmt.Fprintf(os.Stderr, "Request: %+v\n", request)
 				node := sellBook.getNodeById(request.id)
 				node.size = request.size
 				node.counter++
 				output := InstrumentOutput {
 					requestType: request.requestType,
 					status: true}
+				//fmt.Fprintf(os.Stderr, "Answer: %+v\n", output)
 				request.outputChan <- output
 			}
 		case <-done:
@@ -252,10 +270,6 @@ func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan 
 	// ask for bestSell
 	inputSBH <- InstrumentRequest {requestType: "getBestSell", outputChan: outputChan}
 	output = <- outputChan
-	fmt.Fprintf(os.Stderr, "status %v %v@%v\n", output.status, output.size, output.price)
-
-	// var bestSell *Node
-	// bestSell = i.getBestSell()
 
 	if output.status == false || price < output.price {
 		addBuy(i.name, id, price, size, inputBBH, inputSBH)
@@ -270,8 +284,6 @@ func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan 
 		i.turnChan <- struct{}{}
 	}	
 	unlockMutex(i.turnMut)
-
-	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }
 
@@ -337,8 +349,6 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 		i.turnChan <- struct{}{}
 	}	
 	unlockMutex(i.turnMut)
-
-	//fmt.Fprintf(os.Stderr, "DONE ORDER\n")
 	clientChan <- struct{}{}
 }
 
@@ -387,7 +397,7 @@ func addBuy(name string, id uint32, price uint32, size uint32, inputBBH chan Ins
 		instrument: name}
 
 	outputChan:= make(chan InstrumentOutput, 1)
-	inputBBH <- InstrumentRequest {requestType: "insert", outputChan: outputChan}
+	inputBBH <- InstrumentRequest {requestType: "insert", id: id, price: price, size: size, outputChan: outputChan}
 	output := <- outputChan
 	// i.buyBook.insert(id, price, size, currentTime)
 
@@ -405,7 +415,7 @@ func addSell(name string, id uint32, price uint32, size uint32, inputBBH chan In
 		count: size,
 		instrument: name}
 	outputChan:= make(chan InstrumentOutput, 1)
-	inputSBH <- InstrumentRequest {requestType: "insert", outputChan: outputChan}
+	inputSBH <- InstrumentRequest {requestType: "insert", id: id, price: price, size: size, outputChan: outputChan}
 	output := <- outputChan
 	// i.sellBook.insert(id, price, size, currentTime)
 	outputOrderAdded(in, output.time)
@@ -419,7 +429,7 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH
 	// defer i.buyBook.unlock()
 	var output InstrumentOutput
 	in := input {orderId: id} 
-	outputChan := make(chan InstrumentOutput)
+	outputChan := make(chan InstrumentOutput, 1)
 
 	// node := i.buyBook.getNodeById(id)
 	inputBBH <- InstrumentRequest{requestType: "delete", id: id, outputChan: outputChan}
@@ -452,7 +462,6 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH
 		clientChan <- struct{}{}
 		return
 	}
-
 	outputOrderDeleted(in, false, GetCurrentTimestamp())
 	lockMutex(i.turnMut)
 	i.counter--
@@ -461,5 +470,6 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH
 		i.turnChan <- struct{}{}
 	}	
 	unlockMutex(i.turnMut)
+	//fmt.Fprintf(os.Stderr, "%v\n", clientChan)
 	clientChan <- struct{}{}
 }
