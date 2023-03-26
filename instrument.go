@@ -218,32 +218,82 @@ func getBestSell(sellBook *LinkedList) *Node {
 	return answer
 }
 
+type CounterRequest struct {
+	// increment, decrement, getType
+	requestType string
+	curType inputType 
+	outputChan chan CounterResponse
+}
+
+type CounterResponse struct {
+	curType inputType 
+}
+
+func counterHandler(incomingChan chan CounterRequest, turnChan chan struct{}, done <-chan struct{}) {
+	counter := 0
+	var currentType inputType = 'X'
+	
+	for {
+		select {
+		case req := <- incomingChan:
+			// fmt.Fprintf(os.Stderr, "Get Request: %s\n", req.requestType)
+			switch req.requestType {
+			case "increment":
+				select {
+				case <-turnChan:
+				default:
+				}
+				counter++
+				currentType = req.curType 
+				req.outputChan <- CounterResponse{}
+			case "decrement":
+				counter--
+				if counter == 0 {
+					// fmt.Fprintf(os.Stderr, "Hit zero!\n")
+					currentType = 'X'
+					turnChan <- struct{}{}
+				}
+				req.outputChan <- CounterResponse{}
+			case "getType":
+				req.outputChan <- CounterResponse{curType: currentType}
+			}
+		case <- done:
+			return 
+		}
+	}
+}
+
 func instrumentFunc(done <-chan struct{}, name string) chan Order {
 	orderChan := make(chan Order)
 	go func() {
 		instrument := newInstrument(name)
 		inputBBH := make(chan InstrumentRequest)
 		inputSBH := make(chan InstrumentRequest)
+		counterChan := make(chan CounterRequest)
 		go handleBuyBook(inputBBH, done)
 		go handleSellBook(inputSBH, done)
+		go counterHandler(counterChan,instrument.turnChan, done)
 		for {
 			select {
 			case order:= <- orderChan:
-				if order.orderType != instrument.currentType {
+				resChan := make(chan CounterResponse)
+				counterChan <- CounterRequest{requestType: "getType", outputChan: resChan}
+				typ := <-resChan
+
+				if order.orderType != typ.curType {
 					<-instrument.turnChan
 				}
 
-				lockMutex(instrument.turnMut)
-				instrument.counter++
-				instrument.currentType = order.orderType
-				unlockMutex(instrument.turnMut)
+				resChan = make(chan CounterResponse)
+				counterChan <- CounterRequest{requestType: "increment", curType: order.orderType, outputChan: resChan}
+				<-resChan
 
 				if order.orderType == inputBuy {
-					go instrument.processBuy(order.id, order.price, order.size, order.clientChan, inputBBH, inputSBH)
+					go instrument.processBuy(order.id, order.price, order.size, order.clientChan, inputBBH, inputSBH, counterChan)
 				} else if order.orderType == inputSell {
-					go instrument.processSell(order.id, order.price, order.size, order.clientChan, inputBBH, inputSBH)
+					go instrument.processSell(order.id, order.price, order.size, order.clientChan, inputBBH, inputSBH, counterChan)
 				} else {
-					go instrument.processCancel(order.id, order.clientChan, inputBBH, inputSBH)
+					go instrument.processCancel(order.id, order.clientChan, inputBBH, inputSBH, counterChan)
 				}
 			case <- done:
 				return
@@ -264,7 +314,9 @@ func min(a, b uint32) uint32 {
 	return b
 }
 
-func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan chan struct {}, inputBBH chan InstrumentRequest, inputSBH chan InstrumentRequest) {
+func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan chan struct {}, inputBBH chan InstrumentRequest, 
+	inputSBH chan InstrumentRequest, counterChan chan CounterRequest) {
+
 	outputChan:= make(chan InstrumentOutput, 1)
 	var output InstrumentOutput
 	// ask for bestSell
@@ -277,13 +329,10 @@ func (i *Instrument)processBuy(id uint32, price uint32, size uint32, clientChan 
 		i.executeBuy(id, price, size, inputBBH, inputSBH)
 	}
 
-	lockMutex(i.turnMut)
-	i.counter--
-	if(i.counter == 0) {
-		i.currentType = 'X'
-		i.turnChan <- struct{}{}
-	}	
-	unlockMutex(i.turnMut)
+	resChan := make(chan CounterResponse)
+	counterChan <- CounterRequest{requestType: "decrement", curType: 'B', outputChan: resChan}
+	<-resChan
+
 	clientChan <- struct{}{}
 }
 
@@ -328,7 +377,8 @@ func (i *Instrument)executeBuy(id uint32, price uint32, size uint32, inputBBH ch
 	}
 }
 
-func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientChan chan struct{}, inputBBH chan InstrumentRequest, inputSBH chan InstrumentRequest) {
+func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientChan chan struct{}, inputBBH chan InstrumentRequest, 
+	inputSBH chan InstrumentRequest, counterChan chan CounterRequest) {
 	// bestBuy := i.getBestBuy()
 	outputChan:= make(chan InstrumentOutput, 1)
 	var output InstrumentOutput
@@ -342,13 +392,9 @@ func (i *Instrument) processSell(id uint32, price uint32, size uint32, clientCha
 		i.executeSell(id, price, size, inputBBH, inputSBH)
 	}
 
-	lockMutex(i.turnMut)
-	i.counter--
-	if(i.counter == 0) {
-		i.currentType = 'X'
-		i.turnChan <- struct{}{}
-	}	
-	unlockMutex(i.turnMut)
+	resChan := make(chan CounterResponse)
+	counterChan <- CounterRequest{requestType: "decrement", curType: 'S', outputChan: resChan}
+	<-resChan
 	clientChan <- struct{}{}
 }
 
@@ -422,7 +468,8 @@ func addSell(name string, id uint32, price uint32, size uint32, inputBBH chan In
 }
 
 
-func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH chan InstrumentRequest, inputSBH chan InstrumentRequest) {
+func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH chan InstrumentRequest, 
+	inputSBH chan InstrumentRequest, counterChan chan CounterRequest) {
 	// i.sellBook.lock()
 	// defer i.sellBook.unlock()
 	// i.buyBook.lock()
@@ -437,13 +484,9 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH
 	if output.status != false {
 		// i.buyBook.deleteNode(node)
 		outputOrderDeleted(in, true, output.time)
-		lockMutex(i.turnMut)
-		i.counter--
-		if(i.counter == 0) {
-			i.currentType = 'X'
-			i.turnChan <- struct{}{}
-		}	
-		unlockMutex(i.turnMut)
+		resChan := make(chan CounterResponse)
+		counterChan <- CounterRequest{requestType: "decrement", curType: 'C', outputChan: resChan}
+		<-resChan
 		clientChan <- struct{}{}
 		return
 	}
@@ -452,24 +495,17 @@ func (i *Instrument) processCancel(id uint32, clientChan chan struct{}, inputBBH
 	if output.status != false {
 		// i.sellBook.deleteNode(node2)
 		outputOrderDeleted(in, true, output.time)
-		lockMutex(i.turnMut)
-		i.counter--
-		if(i.counter == 0) {
-			i.currentType = 'X'
-			i.turnChan <- struct{}{}
-		}	
-		unlockMutex(i.turnMut)
+		resChan := make(chan CounterResponse)
+		counterChan <- CounterRequest{requestType: "decrement", curType: 'C', outputChan: resChan}
+		<-resChan
 		clientChan <- struct{}{}
 		return
 	}
 	outputOrderDeleted(in, false, GetCurrentTimestamp())
-	lockMutex(i.turnMut)
-	i.counter--
-	if(i.counter == 0) {
-		i.currentType = 'X'
-		i.turnChan <- struct{}{}
-	}	
-	unlockMutex(i.turnMut)
+	resChan := make(chan CounterResponse)
+	counterChan <- CounterRequest{requestType: "decrement", curType: 'C', outputChan: resChan}
+	<-resChan
+	
 	//fmt.Fprintf(os.Stderr, "%v\n", clientChan)
 	clientChan <- struct{}{}
 }
