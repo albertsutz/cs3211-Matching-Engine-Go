@@ -28,14 +28,24 @@ func newNode(id uint32, price uint32, size uint32, time int64) *Node {
 }
 
 type LinkedList struct {
+	mut chan struct{}
 	head   *Node
 	length int
 }
 
 func newLinkedList() *LinkedList {
 	return &LinkedList{
+		mut: initMutex(),
 		head:   nil,
 		length: 0}
+}
+
+func (ll *LinkedList) lock() {
+	lockMutex(ll.mut)
+}
+
+func (ll *LinkedList) unlock() {
+	unlockMutex(ll.mut)
 }
 
 func (ll *LinkedList) getHead() *Node {
@@ -61,7 +71,7 @@ func (ll *LinkedList) insert(id uint32, price uint32, size uint32, time int64) {
 	ll.head = node
 }
 
-func (ll *LinkedList) getNodeById(id uint32) *Node {
+func (ll *LinkedList) getNodeById(id uint32) *Node { 
 	var dummyNode *Node = ll.getHead()
 	for i := 0; i < ll.getLength(); i++ {
 		if dummyNode.id == id {

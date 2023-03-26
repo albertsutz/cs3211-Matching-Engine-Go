@@ -7,11 +7,30 @@ import (
 	"io"
 	"net"
 	"os"
-	// "time"
 )
 
+type Request struct {
+	in input
+	clientChan chan struct{}
+}
+
 type Engine struct{
-	ob *OrderBook 
+	reqChan chan Request
+}
+
+func (e *Engine) processRequest(done chan struct{}) {
+	ob := newOrderBook(done) 
+
+	for {
+		req := <-e.reqChan
+		in := req.in 
+		switch in.orderType {
+		case inputCancel:
+			ob.process_cancel(in.orderId, req.clientChan)
+		default:
+			ob.process_order(in.orderType, in.orderId, in.instrument, in.price, in.count, req.clientChan)
+		}
+	}
 }
 
 func (e *Engine) accept(ctx context.Context, conn net.Conn) {
@@ -19,10 +38,10 @@ func (e *Engine) accept(ctx context.Context, conn net.Conn) {
 		<-ctx.Done()
 		conn.Close()
 	}()
-	go e.handleConn(conn)
+	go handleConn(conn, e.reqChan)
 }
 
-func (e *Engine) handleConn(conn net.Conn) {
+func handleConn(conn net.Conn, reqChan chan Request) {
 	defer conn.Close()
 	clientChan := make(chan struct{})
 	for {
@@ -33,13 +52,8 @@ func (e *Engine) handleConn(conn net.Conn) {
 			}
 			return
 		}
-		switch in.orderType {
-		case inputCancel:
-			e.ob.process_cancel(in.orderId, clientChan)
-			<- clientChan 
-		default:
-			e.ob.process_order(in.orderType, in.orderId, in.instrument, in.price, in.count, clientChan)
-			<- clientChan 
-		}
+		request := Request{in: in, clientChan: clientChan}
+		reqChan <- request
+		<- clientChan 
 	}
 }
