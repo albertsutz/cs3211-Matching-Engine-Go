@@ -20,11 +20,6 @@ type Engine struct{
 }
 
 func (e *Engine) processRequest(done chan struct{}) {
-	// done := make(chan struct{})
-	// go func() {
-	// 	<-ctx.Done()
-	// 	close(done)
-	// }()
 	ob := newOrderBook(done) 
 
 	for {
