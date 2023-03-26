@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	// "time"
 )
 
 type Request struct {
